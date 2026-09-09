@@ -1,0 +1,385 @@
+name: Deployment Verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Daily rebuild: security patches should not wait for a weekly slot.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: deployment-verification-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Authenticated requests avoid the anonymous API rate limit that shared
+  # GitHub runners regularly hit (api.github.com answers 403 otherwise).
+  GH_API_TOKEN: ${{ github.token }}
+
+jobs:
+  lint:
+    name: Lint shell scripts and workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: ShellCheck
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            koalaman/shellcheck-alpine:stable \
+            shellcheck ./*.sh
+
+      - name: actionlint (GitHub Actions workflow linting)
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            rhysd/actionlint:1.7.12 \
+            -color
+
+  scan-trivy:
+    name: Scan pinned upstream image with Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Findings surface in the Security tab for triage; they don't block CI.
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      # Image refs are read from the compose file's x-images defaults at
+      # runtime — single source of truth.
+      fail-fast: false
+      matrix:
+        include:
+          - name: postgres
+            env_var: IMMICH_POSTGRES_IMAGE_TAG
+            skip_files: "usr/local/bin/gosu,/usr/local/bin/gosu,etc/ssl/private/ssl-cert-snakeoil.key,/etc/ssl/private/ssl-cert-snakeoil.key"
+          - name: redis
+            env_var: IMMICH_REDIS_IMAGE_TAG
+          - name: immich-server
+            env_var: IMMICH_SERVER_IMAGE_TAG
+          - name: immich-machine-learning
+            env_var: IMMICH_ML_IMAGE_TAG
+          - name: traefik
+            env_var: TRAEFIK_IMAGE_TAG
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read pinned ${{ matrix.name }} image from the compose file
+        id: pin
+        env:
+          ENV_VAR: ${{ matrix.env_var }}
+        run: |
+          image="$(grep -m1 -oE "\\$\\{${ENV_VAR}:-.*" immich-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          if [ -z "$image" ]; then
+            echo "${ENV_VAR} default not found in the compose x-images block" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan of ${{ matrix.name }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.pin.outputs.image }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          skip-files: ${{ matrix.skip_files }}
+
+      - name: Upload Trivy SARIF (${{ matrix.name }}) to GitHub Security
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+
+  check-pin-freshness:
+    name: Check pinned images for upstream drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Scheduled + manual dispatch only: a new upstream release is not
+    # actionable inside an unrelated PR. On the cron the failure lands as a
+    # workflow-failure notification to the maintainer — a stale pin must
+    # not sit unnoticed. Dependabot cannot see these pins (they are compose
+    # interpolation defaults, not Dockerfile literals), so this job is the
+    # actual tracking mechanism.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare pinned digests against what each tag resolves to now
+        run: |
+          status=0
+          for var in IMMICH_POSTGRES_IMAGE_TAG IMMICH_REDIS_IMAGE_TAG IMMICH_SERVER_IMAGE_TAG IMMICH_ML_IMAGE_TAG TRAEFIK_IMAGE_TAG; do
+            pin="$(grep -m1 -oE "\\$\\{${var}:-.*" immich-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+            ref="${pin%%@*}"
+            pinned_digest="${pin##*@}"
+            # Three attempts: an unanswered registry lookup used to leave this empty,
+            # and the comparison below then reported it as drift.
+            current_digest=""
+            for attempt in 1 2 3; do
+              current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty')"
+              [ -n "$current_digest" ] && break
+              sleep $(( attempt * 5 ))
+            done
+            if [ -z "$current_digest" ]; then
+              echo "::error::${ref} did not resolve after three attempts: the registry did not answer, or the tag is gone. The pin itself is unchanged."
+              status=1
+              continue
+            fi
+            if [ "$pinned_digest" != "$current_digest" ]; then
+              echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
+              status=1
+            else
+              echo "${var} OK (${ref})"
+            fi
+          done
+          exit "$status"
+
+      - name: Compare the pinned Immich version against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        #
+        # Both Immich pins carry the same version on purpose: the server and
+        # the machine-learning image are one release, and Immich supports no
+        # combination where they differ. A disagreement between them is a
+        # finding in itself, so it is checked here rather than assumed.
+        if: always()
+        run: |
+          server_pin="$(grep -m1 -oE '\$\{IMMICH_SERVER_IMAGE_TAG:-.*' immich-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          ml_pin="$(grep -m1 -oE '\$\{IMMICH_ML_IMAGE_TAG:-.*' immich-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          server_ref="${server_pin%%@*}"; server_version="${server_ref##*:}"
+          ml_ref="${ml_pin%%@*}";         ml_version="${ml_ref##*:}"
+          if [ "$server_version" != "$ml_version" ]; then
+            echo "::error::the server and machine-learning pins disagree: ${server_version} and ${ml_version}. Immich ships them as one release."
+            exit 1
+          fi
+          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/immich-app/immich/releases/latest | jq -r .tag_name)"
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::Could not determine the latest Immich release from the GitHub API"
+            exit 1
+          fi
+          if [ "$server_version" != "$latest" ]; then
+            echo "::error::Immich pin is behind: pinned ${server_version}, latest release is ${latest}"
+            exit 1
+          fi
+          echo "Immich pin ${server_version} matches the latest release, and both images carry it"
+
+      - name: Compare pinned Traefik minor against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
+        run: |
+          pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' immich-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          ref="${pin%%@*}"
+          pinned_minor="${ref##*:}"
+          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
+          latest="${latest#v}"
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::Could not determine the latest Traefik release from the GitHub API"
+            exit 1
+          fi
+          case "$latest" in
+            "$pinned_minor".*) echo "Traefik pin ${pinned_minor} matches the latest release line (${latest})" ;;
+            *) echo "::error::Traefik pin is behind: pinned minor ${pinned_minor}, latest release is ${latest}"; exit 1 ;;
+          esac
+
+  deploy-and-test:
+    name: docker compose up + Immich HTTPS smoke + backup validity
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 35
+    permissions:
+      contents: read
+
+    env:
+      NETWORK_ONE: immich-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: immich-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: immich.heyvaldemardm.net
+      APP_TRAEFIK_HOSTNAME: traefik.immich.heyvaldemardm.net
+      COMPOSE_PROJECT_NAME: immich
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Generate test .env with ephemeral credentials
+        # The real .env is gitignored. CI generates throwaway credentials so
+        # `docker compose up` succeeds without committing secrets to the
+        # repo. No *_IMAGE_TAG values on purpose: the compose file's
+        # x-images defaults apply, so CI always tests exactly the pins the
+        # template ships to users who run it unmodified.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          IMMICH_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          IMMICH_HOSTNAME=${APP_HOSTNAME}
+          BACKUP_INIT_SLEEP=15s
+          BACKUP_INTERVAL=60s
+          EOF
+          echo "Generated ephemeral .env for CI run"
+
+      - name: Upgrade drill — the previous release comes up first, on the volumes this run will upgrade
+        # A fresh stack proves the new image starts. It proves nothing about the
+        # data a deployed host already has: whether the new database image accepts
+        # the old data directory, whether the application's migrations run on a
+        # populated schema. So the previous release is started first, on this
+        # project's volumes, and the ordinary `up -d` below then recreates the
+        # changed containers on top of it - which is exactly what `git pull &&
+        # docker compose up -d` does on a deployed host. Every smoke check that
+        # follows judges the upgraded stack, not a fresh one.
+        run: |
+          prev="$(git ls-remote --tags --sort=-v:refname origin 'v*' | grep -v '\^{}' | head -1 | sed 's|.*refs/tags/||')"
+          if [ -z "$prev" ]; then
+            echo "no previous release: nothing to upgrade from, the fresh start below is the whole test"
+            exit 0
+          fi
+          git fetch --depth=1 --quiet origin "refs/tags/$prev:refs/tags/$prev"
+          if git diff --quiet "$prev" -- "$DOCKER_COMPOSE_FILE"; then
+            echo "the compose file is unchanged since $prev: nothing to drill"
+            exit 0
+          fi
+          git show "$prev:$DOCKER_COMPOSE_FILE" > .upgrade-drill-previous.yml
+          echo "starting $prev on this project's volumes"
+          docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" up -d
+          # Healthy means: every container is running and healthy (or running
+          # with no health check), or exited 0 (a one-shot init container).
+          bad=""
+          for _ in $(seq 1 60); do
+            bad="$(docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" ps -a --format json \
+              | jq -rs '[.[] | select((.State == "running" and (.Health == "" or .Health == "healthy")) or (.State == "exited" and .ExitCode == 0) | not)] | map("\(.Service):\(.State)/\(.Health)") | join(" ")')"
+            [ -z "$bad" ] && break
+            sleep 10
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::the previous release ($prev) did not come up with this run's .env: $bad. Either the variable contract changed - then the changelog must say so - or $prev was never green here."
+            docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" logs --tail 80
+            exit 1
+          fi
+          echo "$prev is up and healthy; stopping it and keeping its volumes"
+          docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" down
+          rm -f .upgrade-drill-previous.yml
+          echo "the start below is now an upgrade from $prev"
+
+      - name: Start up services using Docker Compose
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
+
+      - name: Print Docker Compose services status
+        run: docker ps
+
+      - name: Wait for the Immich API through Traefik
+        # /api/server/ping is Immich's own readiness probe and it answers
+        # exactly {"res":"pong"} — checking the body, not just the status,
+        # is what separates "the server is up" from "something returned 200".
+        # The first boot runs the database migrations before it answers at all.
+        run: |
+          # shellcheck disable=SC2016
+          timeout 12m bash -c 'while ! curl -sk "https://$APP_HOSTNAME/api/server/ping" | grep -q "\"res\":\"pong\""; do
+            echo "Waiting for Immich..."
+            sleep 10
+          done'
+          curl -sk "https://$APP_HOSTNAME/api/server/ping" -w "\n"
+          curl -skL "https://$APP_HOSTNAME/" -o /dev/null -w "Immich UI: %{http_code}\n"
+
+      - name: Verify the machine-learning service is wired up, not merely running
+        # The server reaches it over the compose network; a stack where the ML
+        # container starts but the server cannot see it looks identical from
+        # outside until the first search returns nothing.
+        run: |
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T immich-server \
+            sh -c 'curl -fsS http://immich-machine-learning:3003/ping' && echo "machine learning answers the server"
+
+      - name: Verify the database carries the vector extensions Immich needs
+        # Immich refuses to start against a VectorChord it considers
+        # incompatible, and a template that pins the wrong database image is
+        # broken in a way a plain "did it boot" check never sees.
+        run: |
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T postgres \
+            psql -U immichdbuser -d immich -tAc "SELECT extname || ' ' || extversion FROM pg_extension WHERE extname IN ('vchord','vector') ORDER BY 1;" \
+            | tee /tmp/ext.txt
+          grep -q '^vchord ' /tmp/ext.txt || { echo "::error::the vchord extension is not installed in the Immich database"; exit 1; }
+          grep -q '^vector ' /tmp/ext.txt || { echo "::error::the vector extension is not installed in the Immich database"; exit 1; }
+
+      - name: Verify a backup is produced and valid
+        # Log-driven: the file named in a 'backup OK' line is complete by
+        # definition, so this never races a dump that is still being written.
+        run: |
+          # shellcheck disable=SC2016
+          timeout 6m bash -c 'until docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
+          db=$(docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
+          echo "Database backup file: $db"
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T backups sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
+          # shellcheck disable=SC2016
+          timeout 6m bash -c 'until docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep -qE "Data backup (OK|FAILED)"; do echo "Waiting for the library archive..."; sleep 10; done'
+          data=$(docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep "Data backup OK" | tail -1 | sed -E 's/.*Data backup OK: ([^ ]+) .*/\1/')
+          [ -n "$data" ] || { echo "::error::no 'Data backup OK' line - the library archive failed"; exit 1; }
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T backups sh -c "tar -tzf '$data' > /dev/null" && echo "Library backup valid: $data"
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
+
+      - name: Run the backup/restore end-to-end tests
+        # Eight scenarios against the live stack: required-env guard, backup
+        # produced, readable, valid content, library archive readable, failure
+        # detected when the database is down, restore genuinely replaces state,
+        # prune keeps recent files. Same script a maintainer runs locally.
+        run: |
+          chmod +x tests/e2e-backup-restore.sh
+          ./tests/e2e-backup-restore.sh
+
+      - name: Immich answers on the restored database
+        # The end-to-end test above drops and reloads the database underneath a
+        # running server. A restore that leaves the vector extensions or the
+        # schema in a state Immich rejects passes every check up to here and
+        # fails the first time somebody actually needs it.
+        run: |
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" restart immich-server
+          # shellcheck disable=SC2016
+          timeout 8m bash -c 'while ! curl -sk "https://$APP_HOSTNAME/api/server/ping" | grep -q "\"res\":\"pong\""; do
+            echo "Waiting for Immich on the restored database..."
+            sleep 10
+          done'
+          echo "Immich came back on the restored database"
+
+      - name: Wait for the Traefik dashboard to be ready
+        run: |
+          # shellcheck disable=SC2016
+          timeout 5m bash -c 'while ! curl -fsSLk --write-out "%{http_code}" --output /dev/null "https://$APP_TRAEFIK_HOSTNAME" | grep -E "200|401"; do
+            echo "Waiting for the dashboard to be ready..."
+            sleep 10
+          done'
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs
+
+      - name: Shutdown Docker Compose services
+        if: always()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" down
