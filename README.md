@@ -50,6 +50,16 @@ curl -sk "https://${IMMICH_HOSTNAME}/api/server/ping"
 
 `./update.sh` moves this checkout to the latest release tag — a combination this repository's CI has booted, upgraded from the previous release on the same volumes, and smoke-tested — and then runs `docker compose up -d`. It refuses to cross a major version unattended, refuses to run over local changes, and names any variable that became required since your version before anything has moved. `./update.sh --dry-run` says what would happen. Every release cut by fleet triage also carries what upstream changed, read from its release notes against this compose file.
 
+### Crossing a PostgreSQL major
+
+A PostgreSQL data directory belongs to one major version. Start 17 on a directory 14 wrote and the server exits with `database files are incompatible with server`, so restarting is not the upgrade path across a major: the data has to be dumped by the old server and loaded into a cluster the new one initialises.
+
+`./immich-upgrade-postgres.sh` does exactly that, stopping at the first thing that fails: it compares the major the compose file pins against the major the running container reports and exits when they match, dumps with the old server's own `pg_dump` to a file beside the script, refuses to go on unless that dump reads back as a real archive, stops the stack keeping every volume, removes only the PostgreSQL data volume, starts the new server alone, loads the dump, and brings the rest up. Nothing is removed before the dump exists and has been read back. The extensions come across in it: `pg_dump` writes VectorChord and pgvector as `CREATE EXTENSION` statements and the new image supplies them.
+
+`./update.sh` calls it when a release moves the major, and `--dry-run` on either says what would happen. The dump is left in place afterwards; copy it somewhere else before you delete it, because from the moment the old volume is removed it is the only copy. The library volume is not touched.
+
+The upgrade drill in CI runs this script, not a restart, whenever a release changes the major: it writes a row into the previous release's database, runs the migration, and fails the build unless that row reads back from the new one.
+
 Two Immich-specific cautions the upstream release notes are explicit about. Downgrading is not supported, even within a minor version. And the mobile app is compatible with the current and previous major version while the server is only compatible with the matching one, so upgrade the app before the server when a major lands.
 
 ## Supply chain trust
@@ -58,7 +68,7 @@ Five images pinned to `tag@sha256:<digest>` as interpolation defaults in the com
 
 - [`ghcr.io/immich-app/immich-server`](https://github.com/immich-app/immich/pkgs/container/immich-server): the application
 - [`ghcr.io/immich-app/immich-machine-learning`](https://github.com/immich-app/immich/pkgs/container/immich-machine-learning): search, face recognition and smart tagging
-- [`ghcr.io/immich-app/postgres`](https://github.com/immich-app/immich/pkgs/container/postgres): PostgreSQL 14 with VectorChord and pgvector, built by Immich
+- [`ghcr.io/immich-app/postgres`](https://github.com/immich-app/immich/pkgs/container/postgres): PostgreSQL 17 with VectorChord and pgvector, built by Immich
 - [`valkey/valkey`](https://hub.docker.com/r/valkey/valkey): the job queue
 - [`traefik`](https://hub.docker.com/_/traefik): reverse proxy
 
@@ -72,7 +82,8 @@ The daily `check-pin-freshness` CI job re-resolves each pin against its registry
 
 Immich does not run stock PostgreSQL. It ships its own image carrying VectorChord and pgvector, and the server reads the VectorChord version at startup and refuses to run against one outside the range it supports. Two consequences for anyone deploying this template:
 
-- **The database pin is not free to move.** It travels with the Immich release, not with the PostgreSQL release calendar. The freshness job watches its digest; the version itself changes when Immich changes it.
+- **The database pin travels with Immich, not with the PostgreSQL release calendar.** The freshness job watches its digest; the extension versions change when Immich changes them.
+- **The PostgreSQL major is this template's choice, within what Immich supports.** Immich's own compose file pins PostgreSQL 14, which goes out of support on 12 November 2026, and Immich publishes the same image on 15, 16 and 17 with its documentation supporting anything from 14 up to 20. This template pins 17, which is supported until November 2029. A fresh deployment gets it and needs nothing else; a deployment already on 14 crosses with `./immich-upgrade-postgres.sh`, described under Updating.
 - **Older instructions pass `command:` arguments to this container.** They set `shared_preload_libraries` and some tuning by hand. That is no longer correct: those settings live inside the image now, selected between an SSD and an HDD profile by `IMMICH_DB_STORAGE_TYPE`. This compose file passes no `command:` overrides for that reason.
 
 CI asserts both extensions are present in the running database on every push, because a template that pins the wrong database image boots cleanly and fails the first time somebody searches.
@@ -85,6 +96,7 @@ CI asserts both extensions are present in the running database on every push, be
 - [ ] **Host-mount the backup volumes.** By default the dumps and archives land in named volumes: if the host dies, they die with it. Bind-mount them to a directory covered by your off-host backup solution.
 - [ ] **Size the library volume for growth.** Originals, thumbnails and transcodes live together; thumbnails and transcodes are roughly the size of the originals again.
 - [ ] **Know the restore procedure.** Run both restore scripts against a test deployment before you need them in production.
+- [ ] **If you are on v1.x, read the PostgreSQL migration before upgrading.** v2.0.0 moves the database from 14 to 17; `./immich-upgrade-postgres.sh --dry-run` shows the steps against your own deployment without changing anything.
 - [ ] **Check the CPU if you use machine learning.** On amd64 the machine-learning image needs `x86-64-v2`; on an older host, remove that service and set the jobs to disabled.
 
 ## Backups and restore

@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [2.0.0] - 2026-09-09
+
+### Changed
+
+- **PostgreSQL 14 → 17, which is a migration and not a restart.** Immich's own
+  compose file pins PostgreSQL 14, and PostgreSQL 14 goes out of support on 12
+  November 2026. Immich publishes the same VectorChord image on 15, 16 and 17,
+  and its documentation supports anything from 14 up to 20, so this template
+  pins 17: supported until November 2029, and no deployment started from here
+  ever has to cross a major it did not choose.
+
+  A data directory belongs to one major, so `docker compose up -d` is not the
+  upgrade path. `./immich-upgrade-postgres.sh` dumps the database with the old
+  server's own `pg_dump`, refuses to continue unless that dump reads back as a
+  valid archive, removes only the PostgreSQL data volume, starts 17 alone,
+  loads the dump, and brings the stack back up. VectorChord and pgvector come
+  across in the dump as `CREATE EXTENSION` statements and the new image
+  supplies them. `./update.sh` calls it when a release moves the major;
+  `--dry-run` on either says what would happen. **Take your own copy of the
+  dump it leaves behind**: once the old volume is removed it is the only one.
+  The library volume is not touched.
+
+### Added
+
+- **The upgrade drill runs the migration.** Where a release changes the
+  PostgreSQL major, CI no longer restarts the stack on the previous release's
+  volumes — it writes a row into the previous release's database, runs
+  `./immich-upgrade-postgres.sh`, and fails the build unless that row reads
+  back from the new server. A migration nobody has run is a migration nobody
+  should ship.
+
+### Notes
+
+- Verified before release: Immich 3.1.0 on PostgreSQL 17.6 with VectorChord
+  0.4.3 and pgvector 0.8.0, sixty-six tables migrated, the eight backup and
+  restore scenarios passing, and a marker row written on 14 readable on 17
+  with the server healthy and no errors in its log.
+
 ## [1.0.0] - 2026-09-09
 
 First release. A production deployment of Immich behind Traefik, built to the
@@ -67,5 +105,6 @@ fleet standard established in
   running in that container whether it is ready. Left inherited, the container
   is unhealthy forever and the upgrade drill waits for it.
 
-[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0
