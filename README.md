@@ -66,7 +66,7 @@ Two Immich-specific cautions the upstream release notes are explicit about. Down
 
 Five images pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block:
 
-- [`ghcr.io/immich-app/immich-server`](https://github.com/immich-app/immich/pkgs/container/immich-server): the application, latest stable (v3.2.1)
+- [`ghcr.io/immich-app/immich-server`](https://github.com/immich-app/immich/pkgs/container/immich-server): the application, latest stable (v3.2.2)
 - [`ghcr.io/immich-app/immich-machine-learning`](https://github.com/immich-app/immich/pkgs/container/immich-machine-learning): search, face recognition and smart tagging
 - [`ghcr.io/immich-app/postgres`](https://github.com/immich-app/immich/pkgs/container/postgres): PostgreSQL 17 with VectorChord and pgvector, built by Immich
 - [`valkey/valkey`](https://hub.docker.com/r/valkey/valkey): the job queue
