@@ -113,6 +113,8 @@ chmod +x ./*.sh
 ./immich-restore-library.sh
 ```
 
+Each lists the backups and asks, or takes a file name as its argument; both read every value from the running backups container, and CI runs both on every push.
+
 The database is the index and the library is what it points at. A library newer than its database holds files no asset row knows about; a database newer than its library holds rows pointing at files that are not there. After restoring the library, run Administration → Jobs → Generate Thumbnails and Transcode Videos to rebuild what the archive leaves out.
 
 Immich's own documentation describes a different restore sequence, with a `search_path` rewrite, for dumps taken by its in-app backup and loaded into a database that still exists. These scripts drop and recreate the database first, which is why no rewrite is needed here — and CI proves the roundtrip, including that Immich comes back up on the restored database, on every run.

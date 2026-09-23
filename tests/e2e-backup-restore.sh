@@ -108,13 +108,6 @@ db_query() {
 db_ready() {
   docker exec "$DB_CONTAINER" pg_isready -q -U "$DB_USER" -d "$DB_NAME" > /dev/null 2>&1
 }
-db_restore() {
-  # --force terminates the application's live connections; the interactive
-  # restore script stops the application first instead.
-  backups_sh "dropdb --force -h $DB_HOST -p 5432 -U $DB_USER $DB_NAME \
-    && createdb -h $DB_HOST -p 5432 -U $DB_USER $DB_NAME \
-    && gunzip -c $1 | psql -q -h $DB_HOST -p 5432 -U $DB_USER $DB_NAME > /dev/null"
-}
 marker_create() { db_query "CREATE TABLE IF NOT EXISTS e2e_marker (id int PRIMARY KEY);" > /dev/null; }
 marker_insert() { db_query "CREATE TABLE IF NOT EXISTS restore_test (id int); INSERT INTO restore_test VALUES (1);" > /dev/null; }
 marker_count() { db_query "SELECT count(*) FROM restore_test;" | tr -d '[:space:]'; }
@@ -254,10 +247,35 @@ test_restore_roundtrip() {
   marker_insert
   before=$(marker_count)
   [[ "$before" -ge 1 ]] || { fail "marker insert failed: count=$before"; return 1; }
-  echo "  restoring the baseline"
-  db_restore "$baseline" || { fail "restore commands failed"; return 1; }
+  # THE SHIPPED SCRIPT, NOT A COPY OF ITS COMMANDS. This used to run its own
+  # copy of the restore commands, so the script a person runs on their worst
+  # day was never run here, and it had drifted from the stack it restores.
+  echo "  restoring the baseline with ./immich-restore-database.sh"
+  COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" ./immich-restore-database.sh "$(basename "$baseline")" \
+    || { fail "the shipped restore script failed"; return 1; }
   marker_gone || { fail "marker still present after restore - restore was a no-op"; return 1; }
   echo "  marker absent after restore - the backup is restorable"
+}
+
+test_library_restore_roundtrip() {
+  # The same proof for the library, through the shipped script. It clears only
+  # the directories the archive carries (library, upload, profile), so the
+  # marker goes into one of them: a file there that no archive holds must be
+  # gone once the newest archive is restored.
+  local data dir name newest
+  data="$(backups_sh 'printenv DATA_PATH' | tr -d '[:space:]')"
+  dir="$(backups_sh 'printenv DATA_BACKUPS_PATH' | tr -d '[:space:]')"
+  name="$(backups_sh 'printenv DATA_BACKUP_NAME' | tr -d '[:space:]')"
+  newest="$(backups_sh "ls -1 '${dir%/}'/'$name'-*.tar.gz 2>/dev/null" | sort | tail -n 1)"
+  [[ -n "$newest" ]] || { fail "no library archive to restore"; return 1; }
+  backups_sh "mkdir -p '$data/upload' && touch '$data/upload/e2e-restore-marker'" || { fail "could not write the marker"; return 1; }
+  echo "  restoring $(basename "$newest") with ./immich-restore-library.sh"
+  COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" ./immich-restore-library.sh "$(basename "$newest")" > /dev/null \
+    || { fail "the shipped restore script failed"; return 1; }
+  if backups_sh "test -e '$data/upload/e2e-restore-marker'"; then
+    fail "marker still present after the library restore - it did not replace the library"; return 1
+  fi
+  echo "  marker absent after the library restore - the archive is restorable"
 }
 
 test_prune_removes_old() {
@@ -297,6 +315,7 @@ run_test test_backup_content_valid
 run_test test_data_backup_valid
 run_test test_backup_failure_detected
 run_test test_restore_roundtrip
+run_test test_library_restore_roundtrip
 run_test test_prune_removes_old
 
 echo
