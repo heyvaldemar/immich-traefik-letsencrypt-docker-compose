@@ -78,6 +78,23 @@ Two override levels exist per image. `<PREFIX>_IMAGE_VERSION` in `.env` swaps on
 
 The daily `check-pin-freshness` CI job re-resolves each pin against its registry and compares the pinned Immich and Traefik versions against the latest upstream releases. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
+### Verify what you deploy
+
+Every release from v2.0.7 on carries three files made on GitHub's runner with a short-lived identity and no stored key: `immich-traefik-letsencrypt-docker-compose-<tag>.tar.gz`, a `git archive` of exactly the tree the tag points at; `immich-traefik-letsencrypt-docker-compose-<tag>.tar.gz.sigstore.json`, a keyless [Sigstore](https://www.sigstore.dev/) signature over it; and `immich-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl`, [SLSA](https://slsa.dev/) build provenance from the SLSA generator. To check them with nothing from this repository trusted:
+
+```bash
+cosign verify-blob immich-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
+  --bundle immich-traefik-letsencrypt-docker-compose-<tag>.tar.gz.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+slsa-verifier verify-artifact immich-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
+  --provenance-path immich-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl \
+  --source-uri github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose
+```
+
+Add `--source-tag <tag>` for a release published after 24 September 2026, which is signed by the run that published it. The five releases before that date were signed by a run started by hand on `main`, so their provenance names the branch, not the tag; the archive is still the tag's tree, and the signature still belongs to this repository's workflow. The workflow that makes them is [`release-assets.yml`](.github/workflows/release-assets.yml).
+
 ## The database is not an ordinary PostgreSQL
 
 Immich does not run stock PostgreSQL. It ships its own image carrying VectorChord and pgvector, and the server reads the VectorChord version at startup and refuses to run against one outside the range it supports. Two consequences for anyone deploying this template:
