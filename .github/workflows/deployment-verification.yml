@@ -53,6 +53,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      packages: read
       security-events: write
     strategy:
       # Image refs are read from the compose file's x-images defaults at
@@ -75,6 +76,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to ghcr.io, so its rate limit is per token and not per shared runner address
+        # ghcr.io answered TOOMANYREQUESTS to this repository's image layers
+        # on 2026-09-18 and twice on 2026-09-25, with the same commit green
+        # between: five images, many layers, one address shared with every
+        # other runner. An authenticated pull is counted against the token.
+        # Trivy reads the same credential store as docker.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Read pinned ${{ matrix.name }} image from the compose file
         id: pin
@@ -117,6 +128,7 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+      packages: read
 
     env:
       NETWORK_ONE: immich-network
@@ -129,6 +141,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to ghcr.io, so its rate limit is per token and not per shared runner address
+        # ghcr.io answered TOOMANYREQUESTS to this repository's image layers
+        # on 2026-09-18 and twice on 2026-09-25, with the same commit green
+        # between: five images, many layers, one address shared with every
+        # other runner. An authenticated pull is counted against the token.
+        # Trivy reads the same credential store as docker.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Create necessary Docker networks
         run: |
