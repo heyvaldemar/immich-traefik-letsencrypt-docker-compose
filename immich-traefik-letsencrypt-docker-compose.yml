@@ -276,9 +276,9 @@ services:
       # Uploading a video is a single large request; the default 4 MiB
       # in-memory buffer is not the limit, but the read timeouts are, and a
       # phone on a slow link will hit them mid-upload.
-      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=${IMMICH_UPLOAD_TIMEOUT:-600s}"
-      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=${IMMICH_UPLOAD_TIMEOUT:-600s}"
-      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=${IMMICH_UPLOAD_TIMEOUT:-600s}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=${TRAEFIK_READ_TIMEOUT:-${IMMICH_UPLOAD_TIMEOUT:-600s}}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=${TRAEFIK_WRITE_TIMEOUT:-${IMMICH_UPLOAD_TIMEOUT:-600s}}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=${TRAEFIK_IDLE_TIMEOUT:-${IMMICH_UPLOAD_TIMEOUT:-600s}}"
       # Enable the Docker provider to detect containers and their labels
       - "--providers.docker=true"
       # Point Traefik to the Docker socket
