@@ -13,8 +13,8 @@ x-images:
   traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:575fa15b135078fe5e50aa847987d96dbddd7b093c172429618404df73f3fa7c}}
   postgres: &postgres-image ${IMMICH_POSTGRES_IMAGE_TAG:-ghcr.io/immich-app/postgres:${IMMICH_POSTGRES_IMAGE_VERSION:-17-vectorchord0.4.3-pgvector0.8.0@sha256:51f6abbfc720dde5cad9a39133d1c5247da8f073a449004da781c07b2cd9ee9c}}
   redis: &redis-image ${IMMICH_REDIS_IMAGE_TAG:-valkey/valkey:${IMMICH_REDIS_IMAGE_VERSION:-9@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd}}
-  immich-server: &immich-server-image ${IMMICH_SERVER_IMAGE_TAG:-ghcr.io/immich-app/immich-server:${IMMICH_SERVER_IMAGE_VERSION:-v3.3.1@sha256:db996e352359771c6a3db121a0ed8761516b22f727fc092a0f46dcfef82c1bc1}}
-  immich-machine-learning: &immich-ml-image ${IMMICH_ML_IMAGE_TAG:-ghcr.io/immich-app/immich-machine-learning:${IMMICH_ML_IMAGE_VERSION:-v3.3.1@sha256:513c831cfb010ad319341a0c86b42c575a0d5b688d3e8cae346ee624074a58ed}}
+  immich-server: &immich-server-image ${IMMICH_SERVER_IMAGE_TAG:-ghcr.io/immich-app/immich-server:${IMMICH_SERVER_IMAGE_VERSION:-v3.3.3@sha256:bae7664ff3aa4c2c1fcbdcdd86b40b105643c5f861f3e6a770fc760089f25862}}
+  immich-machine-learning: &immich-ml-image ${IMMICH_ML_IMAGE_TAG:-ghcr.io/immich-app/immich-machine-learning:${IMMICH_ML_IMAGE_VERSION:-v3.3.3@sha256:73915f07e1f4289ba45b174c58443db74cef47ddf502613f475fc5e52458ea42}}
 
 networks:
   immich-network:
