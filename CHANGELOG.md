@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Changed
+
+- **`ghcr.io/immich-app/immich-server:v3.3.3` moved to `ghcr.io/immich-app/immich-server:v3.3.4`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`ghcr.io/immich-app/immich-machine-learning:v3.3.3` moved to `ghcr.io/immich-app/immich-machine-learning:v3.3.4`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 
 ## [2.1.7] - 2026-10-17
 
