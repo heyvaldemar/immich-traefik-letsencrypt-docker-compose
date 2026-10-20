@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [2.1.9] - 2026-10-20
+
 ### Security
 
 - **`traefik:3.7` was rebuilt upstream**; the pin moved from `sha256:0f6150202bc1…` to `sha256:6d3e069ee484…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -256,7 +260,8 @@ fleet standard established in
   running in that container whether it is ready. Left inherited, the container
   is unhealthy forever and the upgrade drill waits for it.
 
-[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.8...HEAD
+[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.9...HEAD
+[2.1.9]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.8...v2.1.9
 [2.1.8]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.7...v2.1.8
 [2.1.7]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.6...v2.1.7
 [2.1.6]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.5...v2.1.6
