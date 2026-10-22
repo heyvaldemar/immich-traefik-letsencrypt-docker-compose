@@ -10,11 +10,11 @@
 # containers: Immich supports no combination where they differ, so both
 # version variables carry the same version and move together.
 x-images:
-  traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:6d3e069ee484ab1da5adfdda555a75eb9b1545ef09096a0cc7c3043101986a20}}
+  traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:22a759fb803abb5c3a7ba5d5a55a201c5fb0fc8993d5c72c47a89075e64f1953}}
   postgres: &postgres-image ${IMMICH_POSTGRES_IMAGE_TAG:-ghcr.io/immich-app/postgres:${IMMICH_POSTGRES_IMAGE_VERSION:-17-vectorchord0.4.3-pgvector0.8.0@sha256:51f6abbfc720dde5cad9a39133d1c5247da8f073a449004da781c07b2cd9ee9c}}
   redis: &redis-image ${IMMICH_REDIS_IMAGE_TAG:-valkey/valkey:${IMMICH_REDIS_IMAGE_VERSION:-9@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd}}
-  immich-server: &immich-server-image ${IMMICH_SERVER_IMAGE_TAG:-ghcr.io/immich-app/immich-server:${IMMICH_SERVER_IMAGE_VERSION:-v3.3.4@sha256:f6475c58b07a8d89ec845aa8782731d36656c3c17d943e0a101dc6ed99a2e53f}}
-  immich-machine-learning: &immich-ml-image ${IMMICH_ML_IMAGE_TAG:-ghcr.io/immich-app/immich-machine-learning:${IMMICH_ML_IMAGE_VERSION:-v3.3.4@sha256:1ab8674e7cec41009abb3812de62a16cc1917e73d486233a5471b048d26fc14d}}
+  immich-server: &immich-server-image ${IMMICH_SERVER_IMAGE_TAG:-ghcr.io/immich-app/immich-server:${IMMICH_SERVER_IMAGE_VERSION:-v3.3.5@sha256:485d546a2e31d6a8b4db8423fcba5c109de8c218d93410af115fd1ccfc4352a6}}
+  immich-machine-learning: &immich-ml-image ${IMMICH_ML_IMAGE_TAG:-ghcr.io/immich-app/immich-machine-learning:${IMMICH_ML_IMAGE_VERSION:-v3.3.5@sha256:5b28c9352c8374b8a1ed96fbdd8d6755fea6e43510ec43fdf6538aa02ea40f56}}
 
 networks:
   immich-network:
