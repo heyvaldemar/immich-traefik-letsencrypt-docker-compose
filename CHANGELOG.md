@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [2.1.15] - 2026-11-06
+
 ### Changed
 
 - **`ghcr.io/immich-app/immich-server:v3.3.5` moved to `ghcr.io/immich-app/immich-server:v3.3.6`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
@@ -303,7 +307,8 @@ fleet standard established in
   running in that container whether it is ready. Left inherited, the container
   is unhealthy forever and the upgrade drill waits for it.
 
-[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.14...HEAD
+[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.15...HEAD
+[2.1.15]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.14...v2.1.15
 [2.1.14]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.13...v2.1.14
 [2.1.13]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.12...v2.1.13
 [2.1.12]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.11...v2.1.12
