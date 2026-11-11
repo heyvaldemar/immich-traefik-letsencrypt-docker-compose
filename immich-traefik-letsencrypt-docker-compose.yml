@@ -157,6 +157,10 @@ services:
       # Seconds an idle model stays resident before it is unloaded. Workers
       # exiting after this are normal, not a crash.
       MACHINE_LEARNING_MODEL_TTL: ${IMMICH_ML_MODEL_TTL:-300}
+      # Which export of the models to download: main, Immich's own default, or
+      # v2, the same models re-exported to run faster in less memory. Unset is
+      # main, as before. Not left empty: Immich reads "" as a revision name.
+      MACHINE_LEARNING_MODEL_REVISION: ${IMMICH_ML_MODEL_REVISION:-main}
     networks:
       - immich-network
     restart: unless-stopped

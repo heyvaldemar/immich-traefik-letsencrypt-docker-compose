@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ghcr.io/immich-app/immich-server:v3.3.6` moved to `ghcr.io/immich-app/immich-server:v3.4.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 - **`ghcr.io/immich-app/immich-machine-learning:v3.3.6` moved to `ghcr.io/immich-app/immich-machine-learning:v3.4.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 
+### Added
+
+- **`IMMICH_ML_MODEL_REVISION`, optional.** It sets Immich's `MACHINE_LEARNING_MODEL_REVISION` in the machine-learning container. Unset, it is `main`, Immich's own default, so nothing changes until you set it.
+
+### Upgrading
+
+- **The v2 models are an opt-in.** Since Immich v3.3.0, `IMMICH_ML_MODEL_REVISION=v2` downloads the same models re-exported in an optimized format: faster, using less memory, with numerically equivalent outputs, so no job has to run again. The first start after switching downloads the v2 models into the model cache once, and the first load of each model takes longer while it is prepared.
+
 ## [2.1.16] - 2026-11-12
 
 ### Security
