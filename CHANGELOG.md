@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`ghcr.io/immich-app/immich-server:v3.3.6` moved to `ghcr.io/immich-app/immich-server:v3.4.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
-- **`ghcr.io/immich-app/immich-machine-learning:v3.3.6` moved to `ghcr.io/immich-app/immich-machine-learning:v3.4.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`ghcr.io/immich-app/immich-server:v3.3.6` moved to `ghcr.io/immich-app/immich-server:v3.4.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`ghcr.io/immich-app/immich-machine-learning:v3.3.6` moved to `ghcr.io/immich-app/immich-machine-learning:v3.4.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 
 ### Added
 
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrading
 
-- **The v2 models are an opt-in.** Since Immich v3.3.0, `IMMICH_ML_MODEL_REVISION=v2` downloads the same models re-exported in an optimized format: faster, using less memory, with numerically equivalent outputs, so no job has to run again. The first start after switching downloads the v2 models into the model cache once, and the first load of each model takes longer while it is prepared.
+- **The v2 models are an opt-in.** Since Immich v3.3.0, `IMMICH_ML_MODEL_REVISION=v2` downloads the same models re-exported in an optimized format: faster, using less memory, with numerically equivalent outputs, so no job has to run again. The first start after switching downloads the v2 models into the model cache once, and the first load of each model takes longer while it is prepared. The v3.4.0 release candidates' notes recommend it to get the full memory and speed gains of that release; Immich itself still defaults to `main` in v3.4.1, and so does this template.
 
 ## [2.1.16] - 2026-11-12
 
