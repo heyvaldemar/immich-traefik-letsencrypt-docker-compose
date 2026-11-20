@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [2.1.20] - 2026-11-20
+
 ### Security
 
 - **`valkey/valkey:9` was rebuilt upstream**; the pin moved from `sha256:3add1a336a92…` to `sha256:13010f40f062…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -347,7 +351,8 @@ fleet standard established in
   running in that container whether it is ready. Left inherited, the container
   is unhealthy forever and the upgrade drill waits for it.
 
-[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.19...HEAD
+[Unreleased]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.20...HEAD
+[2.1.20]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.19...v2.1.20
 [2.1.19]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.18...v2.1.19
 [2.1.18]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.17...v2.1.18
 [2.1.17]: https://github.com/heyvaldemar/immich-traefik-letsencrypt-docker-compose/compare/v2.1.16...v2.1.17
