@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **`valkey/valkey:9` was rebuilt upstream**; the pin moved from `sha256:1c2b25b09f35…` to `sha256:169567d6288e…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
 
 ## [2.1.22] - 2026-11-24
 
